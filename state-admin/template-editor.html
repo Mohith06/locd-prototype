@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Edit Template — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container">
+      <p><a href="templates.html">&larr; Back to Assessment Templates</a></p>
+      <div id="save-confirm" class="alert" style="display: none; background: var(--status-approved-bg); color: var(--status-approved-fg)">
+        Changes saved.
+      </div>
+      <div id="editor-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [
+        { label: "Registration Queue", href: "registration-queue.html", active: false },
+        { label: "All LOCDs", href: "all-locds.html", active: false },
+        { label: "Assessment Templates", href: "templates.html", active: true },
+      ];
+
+      const STRATEGIES = [
+        "weighted-sum-threshold",
+        "any-of-N-yes",
+        "sum-of-minutes-threshold",
+        "boolean-condition-tree",
+        "count-pair",
+      ];
+
+      const NUMERIC_STRATEGIES = ["weighted-sum-threshold", "sum-of-minutes-threshold", "any-of-N-yes"];
+
+      const templateId = new URLSearchParams(window.location.search).get("id");
+
+      const user = requireRole("State Admin", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function paramValue(door) {
+        if (door.scoringStrategy === "any-of-N-yes") return door.scoringParams.n;
+        if (door.scoringStrategy === "boolean-condition-tree" || door.scoringStrategy === "count-pair") {
+          return door.scoringParams.ruleSummary;
+        }
+        return door.scoringParams.threshold;
+      }
+
+      function paramLabel(strategy) {
+        if (strategy === "any-of-N-yes") return "Minimum number of &quot;Yes&quot; items required (N)";
+        if (strategy === "boolean-condition-tree" || strategy === "count-pair") return "Rule summary";
+        return "Threshold";
+      }
+
+      function paramControlHtml(doorId, strategy, value) {
+        const isNumeric = NUMERIC_STRATEGIES.indexOf(strategy) !== -1;
+        if (isNumeric) {
+          return (
+            '<input type="number" id="param-' + doorId + '" value="' + (value != null ? value : 0) + '" />'
+          );
+        }
+        return '<textarea id="param-' + doorId + '" rows="2">' + (value || "") + "</textarea>";
+      }
+
+      function questionsHtml(questions) {
+        let html = '<table class="data-table"><thead><tr><th>Question</th><th>Field Type</th><th>Options</th></tr></thead><tbody>';
+        questions.forEach(function (q) {
+          const options = q.options
+            ? q.options.map(function (o) { return o.label + " (" + o.value + ")"; }).join(", ")
+            : "&mdash;";
+          html += "<tr><td>" + q.label + "</td><td>" + q.fieldType + "</td><td>" + options + "</td></tr>";
+        });
+        html += "</tbody></table>";
+        return html;
+      }
+
+      function render() {
+        const container = document.getElementById("editor-content");
+        const template = findTemplateById(templateId);
+
+        if (!template) {
+          container.innerHTML = '<div class="card"><p>Template not found.</p></div>';
+          return;
+        }
+
+        let doorsHtml = "";
+        template.doors.forEach(function (door) {
+          const strategyOptions = STRATEGIES.map(function (s) {
+            return (
+              '<option value="' + s + '"' + (s === door.scoringStrategy ? " selected" : "") + ">" + s + "</option>"
+            );
+          }).join("");
+
+          doorsHtml +=
+            '<div class="card" style="margin-bottom: 1rem" data-door-id="' + door.id + '">' +
+            "<h3>" + door.name + "</h3>" +
+            '<div class="field-group">' +
+            "<label>Scoring Strategy</label>" +
+            '<select id="strategy-' + door.id + '" data-door-strategy-select>' + strategyOptions + "</select>" +
+            "</div>" +
+            '<div class="field-group" id="param-group-' + door.id + '">' +
+            '<label id="param-label-' + door.id + '">' + paramLabel(door.scoringStrategy) + "</label>" +
+            '<div id="param-control-' + door.id + '">' + paramControlHtml(door.id, door.scoringStrategy, paramValue(door)) + "</div>" +
+            "</div>" +
+            "<p class=\"text-muted\" style=\"margin-bottom: 0.35rem\"><strong>Questions</strong> (read-only in this prototype)</p>" +
+            questionsHtml(door.questions) +
+            "</div>";
+        });
+
+        container.innerHTML =
+          "<h1>" + template.programName + "</h1>" +
+          '<p class="text-muted">' + template.description + "</p>" +
+          doorsHtml +
+          '<button type="button" class="btn btn-primary" id="save-btn">Save Changes</button>';
+
+        container.querySelectorAll("[data-door-strategy-select]").forEach(function (select) {
+          select.addEventListener("change", function () {
+            const doorId = select.id.replace("strategy-", "");
+            const newStrategy = select.value;
+            document.getElementById("param-label-" + doorId).textContent = paramLabel(newStrategy);
+            document.getElementById("param-control-" + doorId).innerHTML = paramControlHtml(doorId, newStrategy, null);
+          });
+        });
+
+        document.getElementById("save-btn").addEventListener("click", function () {
+          const updatedDoors = template.doors.map(function (door) {
+            const strategy = document.getElementById("strategy-" + door.id).value;
+            const rawValue = document.getElementById("param-" + door.id).value;
+            let scoringParams;
+            if (strategy === "any-of-N-yes") {
+              scoringParams = { n: Number(rawValue) || 0 };
+            } else if (strategy === "boolean-condition-tree" || strategy === "count-pair") {
+              scoringParams = { ruleSummary: rawValue };
+            } else {
+              scoringParams = { threshold: Number(rawValue) || 0 };
+            }
+            return Object.assign({}, door, { scoringStrategy: strategy, scoringParams: scoringParams });
+          });
+
+          updateTemplate(template.id, { doors: updatedDoors, lastUpdated: todayIso() });
+
+          render();
+          document.getElementById("save-confirm").style.display = "block";
+          window.scrollTo(0, 0);
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LOCD Assessment — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container">
+      <p><a href="dashboard.html">&larr; Back to My LOCDs</a></p>
+      <div id="assessment-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/scoring.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [{ label: "My LOCDs", href: "dashboard.html", active: false }];
+      const appId = new URLSearchParams(window.location.search).get("id");
+
+      let currentDoorIndex = 0;
+      let answers = {};
+
+      const user = requireRole("Nursing Facility User", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        init();
+      }
+
+      function init() {
+        const application = findApplicationById(appId);
+        const container = document.getElementById("assessment-content");
+
+        if (!application || application.submittedByUserId !== user.id) {
+          container.innerHTML = '<div class="card"><p>LOCD not found.</p></div>';
+          return;
+        }
+
+        // Legacy demo applications (seeded before Batch 3) have no templateId — default to the
+        // one published template, since this prototype only has a single program configured.
+        const template = findTemplateById(application.templateId) || getTemplates()[0];
+        if (!template) {
+          container.innerHTML = '<div class="card"><p>Assessment template not found.</p></div>';
+          return;
+        }
+
+        template.doors.forEach(function (d) {
+          answers[d.id] = Object.assign({}, (application.answers && application.answers[d.id]) || {});
+        });
+
+        if (application.status !== "Draft") {
+          renderReadOnly(application, template);
+        } else {
+          renderStepper(application, template);
+        }
+      }
+
+      function optionInputHtml(question, currentAnswer) {
+        if (question.fieldType === "single-select") {
+          const selectedLabel = currentAnswer ? currentAnswer.label : "";
+          let html = '<select data-qid="' + question.id + '" data-field-type="single-select">';
+          html += '<option value="">Select…</option>';
+          question.options.forEach(function (opt) {
+            html +=
+              '<option value="' + opt.label + '"' + (opt.label === selectedLabel ? " selected" : "") + ">" +
+              opt.label + "</option>";
+          });
+          html += "</select>";
+          return html;
+        }
+        if (question.fieldType === "yes-no") {
+          const selectedValue = currentAnswer ? (currentAnswer.value ? "yes" : "no") : "";
+          return (
+            '<select data-qid="' + question.id + '" data-field-type="yes-no">' +
+            '<option value="">Select…</option>' +
+            '<option value="yes"' + (selectedValue === "yes" ? " selected" : "") + ">Yes</option>" +
+            '<option value="no"' + (selectedValue === "no" ? " selected" : "") + ">No</option>" +
+            "</select>"
+          );
+        }
+        // numeric
+        const numValue = currentAnswer && typeof currentAnswer.value === "number" ? currentAnswer.value : "";
+        return (
+          '<input type="number" min="0" data-qid="' + question.id + '" data-field-type="numeric" value="' + numValue + '" />'
+        );
+      }
+
+      function renderStepper(application, template) {
+        const container = document.getElementById("assessment-content");
+        const door = template.doors[currentDoorIndex];
+
+        let stepperHtml = '<div class="stepper">';
+        template.doors.forEach(function (d, i) {
+          const cls =
+            i === currentDoorIndex ? "stepper__step stepper__step--active" : "stepper__step";
+          stepperHtml += '<div class="' + cls + '">' + (i + 1) + ". " + d.name.replace(/^Door \d+ — /, "") + "</div>";
+        });
+        stepperHtml += "</div>";
+
+        let questionsHtml = "";
+        door.questions.forEach(function (q) {
+          questionsHtml +=
+            '<div class="field-group">' +
+            "<label>" + q.label + "</label>" +
+            optionInputHtml(q, answers[door.id][q.id]) +
+            "</div>";
+        });
+
+        const isFirst = currentDoorIndex === 0;
+        const isLast = currentDoorIndex === template.doors.length - 1;
+
+        container.innerHTML =
+          "<h1>" + application.patientName + " — LOCD Assessment</h1>" +
+          '<p class="text-muted">' + template.programName + " &middot; " + door.name + "</p>" +
+          stepperHtml +
+          '<div class="card">' +
+          questionsHtml +
+          '<div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem">' +
+          (isFirst ? "" : '<button type="button" class="btn btn-secondary" id="prev-btn">&larr; Previous</button>') +
+          '<button type="button" class="btn btn-secondary" id="save-draft-btn">Save as Draft</button>' +
+          (isLast
+            ? '<button type="button" class="btn btn-primary" id="review-btn">Review &amp; Submit</button>'
+            : '<button type="button" class="btn btn-primary" id="next-btn">Save &amp; Continue &rarr;</button>') +
+          "</div>" +
+          "</div>";
+
+        if (!isFirst) {
+          document.getElementById("prev-btn").addEventListener("click", function () {
+            collectDoorAnswers(door);
+            persistAnswers(application);
+            currentDoorIndex--;
+            renderStepper(application, template);
+          });
+        }
+
+        document.getElementById("save-draft-btn").addEventListener("click", function () {
+          collectDoorAnswers(door);
+          persistAnswers(application);
+          window.location.href = "dashboard.html";
+        });
+
+        if (isLast) {
+          document.getElementById("review-btn").addEventListener("click", function () {
+            collectDoorAnswers(door);
+            persistAnswers(application);
+            renderReview(application, template);
+          });
+        } else {
+          document.getElementById("next-btn").addEventListener("click", function () {
+            collectDoorAnswers(door);
+            persistAnswers(application);
+            currentDoorIndex++;
+            renderStepper(application, template);
+          });
+        }
+      }
+
+      function collectDoorAnswers(door) {
+        const doorAnswers = {};
+        door.questions.forEach(function (q) {
+          const el = document.querySelector('[data-qid="' + q.id + '"]');
+          if (!el || el.value === "") return;
+          if (q.fieldType === "single-select") {
+            const option = q.options.find(function (o) {
+              return o.label === el.value;
+            });
+            if (option) doorAnswers[q.id] = { fieldType: "single-select", value: option.value, label: option.label };
+          } else if (q.fieldType === "yes-no") {
+            const isYes = el.value === "yes";
+            doorAnswers[q.id] = { fieldType: "yes-no", value: isYes, label: isYes ? "Yes" : "No" };
+          } else {
+            doorAnswers[q.id] = { fieldType: "numeric", value: Number(el.value) || 0 };
+          }
+        });
+        answers[door.id] = doorAnswers;
+      }
+
+      function persistAnswers(application) {
+        updateApplication(application.id, { answers: answers });
+      }
+
+      function renderReview(application, template) {
+        const container = document.getElementById("assessment-content");
+
+        let summaryHtml = "";
+        template.doors.forEach(function (door) {
+          let rows = "";
+          door.questions.forEach(function (q) {
+            const a = answers[door.id][q.id];
+            const displayValue = a ? (a.label || a.value) : "—";
+            rows += "<tr><td>" + q.label + "</td><td>" + displayValue + "</td></tr>";
+          });
+          summaryHtml +=
+            '<div class="card" style="margin-bottom: 1rem">' +
+            "<h3>" + door.name + "</h3>" +
+            '<table class="data-table"><tbody>' + rows + "</tbody></table>" +
+            "</div>";
+        });
+
+        container.innerHTML =
+          "<h1>Review &amp; Submit</h1>" +
+          '<p class="text-muted">Review your answers below, then submit for a determination.</p>' +
+          summaryHtml +
+          '<button type="button" class="btn btn-secondary" id="back-to-edit-btn" style="margin-right: 0.75rem">&larr; Back to Assessment</button>' +
+          '<button type="button" class="btn btn-primary" id="submit-btn">Submit Assessment</button>';
+
+        document.getElementById("back-to-edit-btn").addEventListener("click", function () {
+          currentDoorIndex = template.doors.length - 1;
+          renderStepper(application, template);
+        });
+
+        document.getElementById("submit-btn").addEventListener("click", function () {
+          updateApplication(application.id, {
+            answers: answers,
+            status: "Submitted",
+            submittedDate: todayIso(),
+          });
+          window.location.href = "determination-result.html?id=" + encodeURIComponent(application.id);
+        });
+      }
+
+      function renderReadOnly(application, template) {
+        const container = document.getElementById("assessment-content");
+
+        let summaryHtml = "";
+        template.doors.forEach(function (door) {
+          let rows = "";
+          door.questions.forEach(function (q) {
+            const a = answers[door.id][q.id];
+            const displayValue = a ? (a.label || a.value) : "—";
+            rows += "<tr><td>" + q.label + "</td><td>" + displayValue + "</td></tr>";
+          });
+          summaryHtml +=
+            '<div class="card" style="margin-bottom: 1rem">' +
+            "<h3>" + door.name + "</h3>" +
+            '<table class="data-table"><tbody>' + rows + "</tbody></table>" +
+            "</div>";
+        });
+
+        container.innerHTML =
+          "<h1>" + application.patientName + " — LOCD Assessment</h1>" +
+          '<p class="text-muted">Status: ' + application.status + ". This assessment has already been submitted and is read-only.</p>" +
+          summaryHtml +
+          '<a class="btn btn-primary" href="determination-result.html?id=' + encodeURIComponent(application.id) + '">View Determination Result</a>';
+      }
+    </script>
+  </body>
+</html>

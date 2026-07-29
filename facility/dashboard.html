@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My LOCDs — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.75rem">
+        <h1>My LOCDs</h1>
+        <a class="btn btn-primary" href="patient-lookup.html">+ New LOCD Assessment</a>
+      </div>
+      <p class="text-muted">LOCD applications you've submitted or have in progress.</p>
+
+      <div id="dashboard-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/scoring.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [{ label: "My LOCDs", href: "dashboard.html", active: true }];
+
+      const STATUS_BADGE_CLASS = {
+        Draft: "status-badge--draft",
+        Submitted: "status-badge--submitted",
+        Eligible: "status-badge--submitted",
+        Approved: "status-badge--approved",
+        Denied: "status-badge--rejected",
+        Appealed: "status-badge--pending",
+      };
+
+      const ACTION_BY_STATUS = {
+        Draft: { label: "Continue Assessment", href: "assessment.html" },
+        Submitted: { label: "View Result", href: "determination-result.html" },
+        Eligible: { label: "View Result", href: "determination-result.html" },
+        Denied: { label: "View Result", href: "determination-result.html" },
+        Appealed: { label: "Continue Appeal", href: "appeal.html" },
+        Approved: { label: "View Result", href: "determination-result.html" },
+      };
+
+      const user = requireRole("Nursing Facility User", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function render() {
+        const container = document.getElementById("dashboard-content");
+        const myApplications = getApplications().filter((a) => a.submittedByUserId === user.id);
+
+        if (myApplications.length === 0) {
+          container.innerHTML =
+            '<div class="card"><p>You have no LOCDs yet. Start one with the button above.</p></div>';
+          return;
+        }
+
+        let rows = "";
+        myApplications.forEach(function (a) {
+          const badgeClass = STATUS_BADGE_CLASS[a.status] || "status-badge--draft";
+          const action = ACTION_BY_STATUS[a.status] || { label: "View", href: "determination-result.html" };
+          rows +=
+            "<tr>" +
+            "<td>" + a.patientName + "</td>" +
+            "<td>" + a.program + "</td>" +
+            '<td><span class="status-badge ' + badgeClass + '">' + a.status + "</span></td>" +
+            "<td>" + (a.submittedDate ? formatDate(a.submittedDate) : "&mdash;") + "</td>" +
+            "<td>" +
+            '<a class="btn btn-primary" href="' + action.href + "?id=" + encodeURIComponent(a.id) + '" style="margin-right: 0.5rem">' + action.label + "</a>" +
+            '<a class="btn btn-secondary" href="document-upload.html?id=' + encodeURIComponent(a.id) + '">Documents</a>' +
+            "</td>" +
+            "</tr>";
+        });
+
+        container.innerHTML =
+          '<div class="card">' +
+          '<table class="data-table">' +
+          "<thead><tr><th>Patient</th><th>Program</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>" +
+          "<tbody>" + rows + "</tbody>" +
+          "</table>" +
+          "</div>";
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Registration Queue — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container">
+      <h1>Registration Queue</h1>
+      <p class="text-muted">
+        Review nursing facility user registrations awaiting a decision.
+      </p>
+
+      <div id="queue-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [
+        { label: "Registration Queue", href: "registration-queue.html", active: true },
+        { label: "All LOCDs", href: "all-locds.html", active: false },
+        { label: "Assessment Templates", href: "templates.html", active: false },
+      ];
+
+      const user = requireRole("State Admin", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function render() {
+        const container = document.getElementById("queue-content");
+        const pending = getUsers().filter((u) => u.registrationStatus === "pending");
+
+        if (pending.length === 0) {
+          container.innerHTML = '<div class="card"><p>No pending registrations.</p></div>';
+          return;
+        }
+
+        let rows = "";
+        pending.forEach(function (u) {
+          rows +=
+            "<tr>" +
+            "<td>" + u.name + "</td>" +
+            "<td>" + u.email + "</td>" +
+            "<td>" + u.facility + "</td>" +
+            "<td>" + u.title + "</td>" +
+            "<td>" + formatDate(u.submittedDate) + "</td>" +
+            "<td>" +
+            '<button type="button" class="btn btn-primary" data-approve="' + u.id + '" style="margin-right: 0.5rem">Approve</button>' +
+            '<button type="button" class="btn btn-secondary" data-reject-toggle="' + u.id + '">Reject</button>' +
+            "</td>" +
+            "</tr>" +
+            '<tr id="reject-row-' + u.id + '" style="display: none">' +
+            '<td colspan="6">' +
+            '<div class="field-group">' +
+            '<label for="reason-' + u.id + '">Rejection reason</label>' +
+            '<textarea id="reason-' + u.id + '" rows="2"></textarea>' +
+            "</div>" +
+            '<button type="button" class="btn btn-primary" data-reject-confirm="' + u.id + '">Confirm Reject</button>' +
+            "</td>" +
+            "</tr>";
+        });
+
+        container.innerHTML =
+          '<div class="card">' +
+          '<table class="data-table">' +
+          "<thead><tr><th>Name</th><th>Email</th><th>Facility</th><th>Title</th><th>Submitted</th><th>Actions</th></tr></thead>" +
+          "<tbody>" + rows + "</tbody>" +
+          "</table>" +
+          "</div>";
+
+        container.querySelectorAll("[data-approve]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            updateUser(btn.getAttribute("data-approve"), { registrationStatus: "approved" });
+            render();
+          });
+        });
+
+        container.querySelectorAll("[data-reject-toggle]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            const id = btn.getAttribute("data-reject-toggle");
+            const row = document.getElementById("reject-row-" + id);
+            row.style.display = row.style.display === "none" ? "table-row" : "none";
+          });
+        });
+
+        container.querySelectorAll("[data-reject-confirm]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            const id = btn.getAttribute("data-reject-confirm");
+            const reasonInput = document.getElementById("reason-" + id);
+            updateUser(id, {
+              registrationStatus: "rejected",
+              rejectionReason: reasonInput.value.trim() || "No reason provided.",
+            });
+            render();
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

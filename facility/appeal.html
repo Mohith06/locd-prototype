@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Appeal — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container" style="max-width: 720px">
+      <p><a href="dashboard.html">&larr; Back to My LOCDs</a></p>
+      <div id="appeal-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/scoring.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [{ label: "My LOCDs", href: "dashboard.html", active: false }];
+      const appId = new URLSearchParams(window.location.search).get("id");
+
+      const user = requireRole("Nursing Facility User", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function historyHtml(application) {
+        const history = application.appealHistory || [];
+        if (history.length === 0) return "";
+        let rows = "";
+        history.forEach(function (h) {
+          rows += "<tr><td>" + formatDate(h.date) + "</td><td>" + h.action + "</td><td>" + h.note + "</td></tr>";
+        });
+        return (
+          '<div class="card" style="margin-top: 1.25rem">' +
+          "<h3>Appeal History</h3>" +
+          '<p class="text-muted">Manual overrides are logged here, distinctly from the automated determination.</p>' +
+          '<table class="data-table"><thead><tr><th>Date</th><th>Action</th><th>Note</th></tr></thead><tbody>' +
+          rows +
+          "</tbody></table>" +
+          "</div>"
+        );
+      }
+
+      function render() {
+        const container = document.getElementById("appeal-content");
+        const application = findApplicationById(appId);
+
+        if (!application || application.submittedByUserId !== user.id) {
+          container.innerHTML = '<div class="card"><p>LOCD not found.</p></div>';
+          return;
+        }
+
+        if (application.status === "Denied") {
+          renderFileAppeal(application);
+        } else if (application.status === "Appealed") {
+          renderAppealDecision(application);
+        } else if (application.status === "Approved") {
+          renderApprovedSummary(application);
+        } else {
+          container.innerHTML =
+            '<div class="card"><p>This LOCD does not currently have an appeal in progress.</p>' +
+            '<a class="btn btn-primary" href="determination-result.html?id=' +
+            encodeURIComponent(application.id) +
+            '">View Determination Result</a></div>';
+        }
+      }
+
+      function renderFileAppeal(application) {
+        const container = document.getElementById("appeal-content");
+        container.innerHTML =
+          "<h1>File an Appeal — " + application.patientName + "</h1>" +
+          '<div class="card">' +
+          "<p>This LOCD was determined <strong>Not Eligible</strong>. Filing an appeal moves it into " +
+          "the state fair hearing process (handled outside this platform). Use this page to track " +
+          "the outcome once a decision is reached.</p>" +
+          '<button type="button" class="btn btn-primary" id="file-appeal-btn">File Appeal</button>' +
+          "</div>" +
+          historyHtml(application);
+
+        document.getElementById("file-appeal-btn").addEventListener("click", function () {
+          const history = (application.appealHistory || []).concat([
+            { action: "Appeal Filed", date: todayIso(), note: "Appeal filed by " + user.name + "." },
+          ]);
+          updateApplication(application.id, { status: "Appealed", appealHistory: history });
+          render();
+        });
+      }
+
+      function renderAppealDecision(application) {
+        const container = document.getElementById("appeal-content");
+        const documents = application.documents || [];
+        const hasCourtDecision = documents.some((d) => d.category === "Court Decision");
+
+        container.innerHTML =
+          "<h1>Appeal In Progress — " + application.patientName + "</h1>" +
+          '<div class="card">' +
+          "<p>Once a court or hearing decision is reached, upload the decision document and record " +
+          "the outcome below.</p>" +
+          '<div class="field-group">' +
+          '<label for="court-doc-file">Court/Hearing Decision Document</label>' +
+          '<input type="file" id="court-doc-file" />' +
+          '<p class="field-hint">Prototype note: only file name/type/size are recorded, not file content.</p>' +
+          "</div>" +
+          '<button type="button" class="btn btn-secondary" id="attach-doc-btn" style="margin-bottom: 1.25rem">Attach Decision Document</button>' +
+          "<p>" +
+          (hasCourtDecision
+            ? '<span class="status-badge status-badge--approved">Court decision attached</span>'
+            : '<span class="status-badge status-badge--pending">No court decision attached yet</span>') +
+          "</p>" +
+          '<div class="field-group">' +
+          '<label for="start-date">LOCD Effective / Start Date</label>' +
+          '<input type="date" id="start-date" value="' + (application.locdStartDate || "") + '" />' +
+          "</div>" +
+          '<div style="display: flex; gap: 0.75rem; flex-wrap: wrap">' +
+          '<button type="button" class="btn btn-primary" id="approve-btn">Approve via Appeal</button>' +
+          '<button type="button" class="btn btn-secondary" id="uphold-btn">Uphold Original Denial</button>' +
+          "</div>" +
+          "</div>" +
+          historyHtml(application);
+
+        document.getElementById("attach-doc-btn").addEventListener("click", function () {
+          const fileInput = document.getElementById("court-doc-file");
+          const file = fileInput.files[0];
+          if (!file) {
+            alert("Choose a file first.");
+            return;
+          }
+          const newDoc = {
+            id: generateId("doc"),
+            name: file.name,
+            type: file.type || "unknown",
+            sizeLabel: file.size < 1024 ? file.size + " B" : Math.round(file.size / 1024) + " KB",
+            uploadedDate: todayIso(),
+            category: "Court Decision",
+          };
+          updateApplication(application.id, { documents: documents.concat([newDoc]) });
+          render();
+        });
+
+        document.getElementById("approve-btn").addEventListener("click", function () {
+          const startDate = document.getElementById("start-date").value;
+          if (!hasCourtDecision) {
+            alert("Attach the court/hearing decision document before recording an outcome.");
+            return;
+          }
+          if (!startDate) {
+            alert("Enter the LOCD effective/start date.");
+            return;
+          }
+          const history = (application.appealHistory || []).concat([
+            {
+              action: "Approved via Appeal",
+              date: todayIso(),
+              note:
+                "Original denial reversed by external authority; this is a manual override, not a " +
+                "new automated determination. LOCD effective date set to " + formatDate(startDate) + ".",
+            },
+          ]);
+          updateApplication(application.id, {
+            status: "Approved",
+            locdStartDate: startDate,
+            appealHistory: history,
+          });
+          render();
+        });
+
+        document.getElementById("uphold-btn").addEventListener("click", function () {
+          const history = (application.appealHistory || []).concat([
+            { action: "Denial Upheld on Appeal", date: todayIso(), note: "Original denial upheld." },
+          ]);
+          updateApplication(application.id, { status: "Denied", appealHistory: history });
+          render();
+        });
+      }
+
+      function renderApprovedSummary(application) {
+        const container = document.getElementById("appeal-content");
+        container.innerHTML =
+          "<h1>Appeal Approved — " + application.patientName + "</h1>" +
+          '<div class="card">' +
+          '<span class="status-badge status-badge--approved">Approved via Appeal</span>' +
+          "<p style=\"margin-top: 0.75rem\">LOCD Effective Date: <strong>" +
+          (application.locdStartDate ? formatDate(application.locdStartDate) : "—") +
+          "</strong></p>" +
+          '<a class="btn btn-primary" href="determination-result.html?id=' +
+          encodeURIComponent(application.id) +
+          '">View Original Determination</a>' +
+          "</div>" +
+          historyHtml(application);
+      }
+    </script>
+  </body>
+</html>

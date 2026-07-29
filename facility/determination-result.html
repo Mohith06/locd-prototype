@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Determination Result — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container" style="max-width: 800px">
+      <p><a href="dashboard.html">&larr; Back to My LOCDs</a></p>
+      <div id="result-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/scoring.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [{ label: "My LOCDs", href: "dashboard.html", active: false }];
+      const appId = new URLSearchParams(window.location.search).get("id");
+
+      const user = requireRole("Nursing Facility User", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function render() {
+        const container = document.getElementById("result-content");
+        let application = findApplicationById(appId);
+
+        if (!application || application.submittedByUserId !== user.id) {
+          container.innerHTML = '<div class="card"><p>LOCD not found.</p></div>';
+          return;
+        }
+
+        if (application.status === "Draft") {
+          container.innerHTML =
+            '<div class="card"><p>This LOCD has not been submitted yet.</p>' +
+            '<a class="btn btn-primary" href="assessment.html?id=' + encodeURIComponent(application.id) + '">Continue Assessment</a></div>';
+          return;
+        }
+
+        // Legacy demo applications have no templateId — default to the one published template.
+        const template = findTemplateById(application.templateId) || getTemplates()[0];
+
+        // Compute-once-and-cache: a fresh Submitted application gets scored exactly once, and
+        // the result is snapshotted onto the record so later template edits by a State Admin
+        // can't silently change a past determination.
+        if (application.status === "Submitted" && !application.doorResults) {
+          const result = scoreApplication(template, application.answers || {});
+          application = updateApplication(application.id, {
+            status: result.eligible ? "Eligible" : "Denied",
+            qualifyingDoor: result.qualifyingDoor,
+            doorResults: result.doorResults,
+            decisionDate: todayIso(),
+          });
+        }
+
+        renderNotice(application);
+      }
+
+      function renderNotice(application) {
+        const container = document.getElementById("result-content");
+        const hasDoorResults = !!(application.doorResults && application.doorResults.length);
+        const originalEligible = hasDoorResults
+          ? application.doorResults.some((r) => r.qualifies)
+          : application.status === "Eligible" || application.status === "Approved";
+
+        let appealBanner = "";
+        if (application.status === "Appealed" || application.status === "Approved") {
+          appealBanner =
+            '<div class="alert" style="background: var(--status-pending-bg); color: var(--status-pending-fg)">' +
+            "This determination was later addressed through an appeal. " +
+            '<a href="appeal.html?id=' + encodeURIComponent(application.id) + '">View appeal details &rarr;</a>' +
+            "</div>";
+        }
+
+        const noticeText = originalEligible
+          ? "This is to notify you that <strong>" + application.patientName + "</strong> has been " +
+            "determined <strong>ELIGIBLE</strong> for Medicaid Long-Term Services and Supports, " +
+            "qualifying under <strong>" + (application.qualifyingDoor || "the assessed criteria") + "</strong>."
+          : "This is to notify you that <strong>" + application.patientName + "</strong> has been " +
+            "determined <strong>NOT ELIGIBLE</strong> for Medicaid Long-Term Services and Supports " +
+            "at this time, based on the criteria assessed below. You have the right to appeal this " +
+            "determination.";
+
+        let breakdownHtml = "";
+        if (hasDoorResults) {
+          let rows = "";
+          application.doorResults.forEach(function (r) {
+            const badgeClass = r.qualifies ? "status-badge--approved" : "status-badge--rejected";
+            rows +=
+              "<tr><td>" + r.doorName + "</td>" +
+              '<td><span class="status-badge ' + badgeClass + '">' + (r.qualifies ? "Met" : "Not Met") + "</span></td>" +
+              "<td>" + r.detail + "</td></tr>";
+          });
+          breakdownHtml =
+            "<h3>Per-Door Breakdown</h3>" +
+            '<table class="data-table"><thead><tr><th>Door</th><th>Result</th><th>Detail</th></tr></thead><tbody>' +
+            rows +
+            "</tbody></table>";
+        } else {
+          breakdownHtml = '<p class="text-muted">Detailed per-door breakdown is not available for this record.</p>';
+        }
+
+        container.innerHTML =
+          appealBanner +
+          '<div class="notice-letter">' +
+          "<h2>" + (originalEligible ? "Notice of Eligibility" : "Notice of Denial") + "</h2>" +
+          '<div class="notice-letter__meta">' +
+          "Patient: " + application.patientName + " &middot; Program: " + application.program + "<br />" +
+          "Decision Date: " + (application.decisionDate ? formatDate(application.decisionDate) : "—") +
+          "</div>" +
+          "<p>" + noticeText + "</p>" +
+          (originalEligible
+            ? ""
+            : "<p>If you disagree with this determination, you may file an appeal. Appeals are " +
+              "handled through the state fair hearing process, outside this platform.</p>") +
+          "</div>" +
+          '<div class="card" style="margin-bottom: 1.25rem">' +
+          '<button type="button" class="btn btn-secondary" disabled title="PDF generation is mocked in this prototype">' +
+          "Download PDF (mock)" +
+          "</button>" +
+          "</div>" +
+          '<div class="card">' + breakdownHtml + "</div>" +
+          (application.status === "Denied"
+            ? '<p style="margin-top: 1.25rem"><a class="btn btn-primary" href="appeal.html?id=' +
+              encodeURIComponent(application.id) +
+              '">File an Appeal</a></p>'
+            : "");
+      }
+    </script>
+  </body>
+</html>

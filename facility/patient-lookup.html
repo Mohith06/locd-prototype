@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Patient Lookup — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container" style="max-width: 640px">
+      <h1>Start a New LOCD</h1>
+      <p class="text-muted">Look up the applicant by Medicaid ID to begin.</p>
+
+      <div class="card">
+        <div class="field-group">
+          <label for="medicaid-id">Medicaid ID</label>
+          <input type="text" id="medicaid-id" placeholder="e.g. MI-70012938" />
+          <p class="field-hint">
+            Try <code>MI-70012938</code> or <code>MI-70099873</code> — any other value shows the
+            not-found state. (Simulated lookup; the real external Medicaid API is out of scope
+            for this prototype.)
+          </p>
+        </div>
+        <button type="button" class="btn btn-primary" id="search-btn">Search</button>
+      </div>
+
+      <div id="lookup-result" style="margin-top: 1.25rem"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/scoring.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [{ label: "My LOCDs", href: "dashboard.html", active: false }];
+      const PROGRAMS = ["Nursing Facility", "MI Choice", "PACE", "MI Health Link"];
+
+      const user = requireRole("Nursing Facility User", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+      }
+
+      function findPatientByMedicaidId(id) {
+        const normalized = (id || "").trim().toUpperCase();
+        return MOCK_PATIENTS.find((p) => p.medicaidId.toUpperCase() === normalized);
+      }
+
+      function startApplication(patientName, facility, program, medicaidId) {
+        const templates = getTemplates();
+        const newApp = {
+          id: generateId("app"),
+          patientName: patientName,
+          facility: facility,
+          program: program,
+          submittedBy: user.name,
+          submittedByUserId: user.id,
+          status: "Draft",
+          qualifyingDoor: null,
+          submittedDate: null,
+          decisionDate: null,
+          templateId: templates.length ? templates[0].id : null,
+          medicaidId: medicaidId || "",
+          answers: {},
+          documents: [],
+          appealHistory: [],
+          doorResults: null,
+          locdStartDate: null,
+        };
+        addApplication(newApp);
+        window.location.href = "assessment.html?id=" + encodeURIComponent(newApp.id);
+      }
+
+      function programOptionsHtml() {
+        return PROGRAMS.map((p) => '<option value="' + p + '">' + p + "</option>").join("");
+      }
+
+      document.getElementById("search-btn").addEventListener("click", function () {
+        const idValue = document.getElementById("medicaid-id").value;
+        const resultBox = document.getElementById("lookup-result");
+        const patient = findPatientByMedicaidId(idValue);
+
+        if (patient) {
+          resultBox.innerHTML =
+            '<div class="card">' +
+            "<h2>Patient Found</h2>" +
+            "<p><strong>" + patient.name + "</strong><br />" +
+            "DOB: " + formatDate(patient.dob) + " &middot; " + patient.gender + "<br />" +
+            "Facility: " + patient.facility + "</p>" +
+            '<div class="field-group">' +
+            '<label for="program-select">Program</label>' +
+            '<select id="program-select">' + programOptionsHtml() + "</select>" +
+            "</div>" +
+            '<button type="button" class="btn btn-primary" id="start-btn">Start Assessment</button>' +
+            "</div>";
+
+          document.getElementById("start-btn").addEventListener("click", function () {
+            const program = document.getElementById("program-select").value;
+            startApplication(patient.name, patient.facility, program, patient.medicaidId);
+          });
+        } else {
+          resultBox.innerHTML =
+            '<div class="card">' +
+            "<h2>Patient Not Found</h2>" +
+            '<p class="text-muted">No patient matched that Medicaid ID. Enter the applicant\'s details manually to continue.</p>' +
+            '<div class="field-group">' +
+            '<label for="manual-name">Patient Name</label>' +
+            '<input type="text" id="manual-name" />' +
+            "</div>" +
+            '<div class="field-group">' +
+            '<label for="manual-facility">Facility</label>' +
+            '<select id="manual-facility"></select>' +
+            "</div>" +
+            '<div class="field-group">' +
+            '<label for="manual-program">Program</label>' +
+            '<select id="manual-program">' + programOptionsHtml() + "</select>" +
+            "</div>" +
+            '<button type="button" class="btn btn-primary" id="manual-start-btn">Start Assessment (Manual Entry)</button>' +
+            "</div>";
+
+          const facilitySelect = document.getElementById("manual-facility");
+          MOCK_FACILITIES.forEach(function (f) {
+            const opt = document.createElement("option");
+            opt.value = f;
+            opt.textContent = f;
+            facilitySelect.appendChild(opt);
+          });
+
+          document.getElementById("manual-start-btn").addEventListener("click", function () {
+            const name = document.getElementById("manual-name").value.trim();
+            if (!name) {
+              alert("Please enter the patient's name.");
+              return;
+            }
+            const facility = document.getElementById("manual-facility").value;
+            const program = document.getElementById("manual-program").value;
+            startApplication(name, facility, program, idValue.trim());
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

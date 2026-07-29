@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LOCD Detail — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container" style="max-width: 900px">
+      <p><a href="all-locds.html">&larr; Back to All LOCDs</a></p>
+      <div id="detail-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/scoring.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [{ label: "All LOCDs", href: "all-locds.html", active: false }];
+      const appId = new URLSearchParams(window.location.search).get("id");
+
+      const STATUS_BADGE_CLASS = {
+        Draft: "status-badge--draft",
+        Submitted: "status-badge--submitted",
+        Eligible: "status-badge--submitted",
+        Approved: "status-badge--approved",
+        Denied: "status-badge--rejected",
+        Appealed: "status-badge--pending",
+      };
+
+      const user = requireRole("Auditor", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function hasRecordedAnswers(application) {
+        if (!application.answers) return false;
+        return Object.keys(application.answers).some(function (doorId) {
+          return Object.keys(application.answers[doorId] || {}).length > 0;
+        });
+      }
+
+      function render() {
+        const container = document.getElementById("detail-content");
+        const application = findApplicationById(appId);
+
+        if (!application) {
+          container.innerHTML = '<div class="card"><p>LOCD not found.</p></div>';
+          return;
+        }
+
+        const badgeClass = STATUS_BADGE_CLASS[application.status] || "status-badge--draft";
+
+        let html =
+          "<h1>" + application.patientName + "</h1>" +
+          '<span class="status-badge ' + badgeClass + '">' + application.status + "</span>" +
+          '<div class="card" style="margin-top: 1rem; margin-bottom: 1.25rem">' +
+          "<h2>Application Information</h2>" +
+          '<table class="data-table"><tbody>' +
+          "<tr><td>Facility</td><td>" + application.facility + "</td></tr>" +
+          "<tr><td>Program</td><td>" + application.program + "</td></tr>" +
+          "<tr><td>Submitted By</td><td>" + (application.submittedBy || "&mdash;") + "</td></tr>" +
+          "<tr><td>Medicaid ID</td><td>" + (application.medicaidId || "&mdash;") + "</td></tr>" +
+          "<tr><td>Submitted Date</td><td>" + (application.submittedDate ? formatDate(application.submittedDate) : "&mdash;") + "</td></tr>" +
+          "<tr><td>Decision Date</td><td>" + (application.decisionDate ? formatDate(application.decisionDate) : "&mdash;") + "</td></tr>" +
+          "<tr><td>Qualifying Door</td><td>" + (application.qualifyingDoor || "&mdash;") + "</td></tr>" +
+          (application.locdStartDate
+            ? "<tr><td>LOCD Effective Date</td><td>" + formatDate(application.locdStartDate) + "</td></tr>"
+            : "") +
+          "</tbody></table>" +
+          "</div>";
+
+        html += renderAssessmentSection(application);
+        html += renderDocumentsSection(application);
+        html += renderAppealSection(application);
+
+        container.innerHTML = html;
+      }
+
+      function renderAssessmentSection(application) {
+        let inner;
+
+        if (!hasRecordedAnswers(application) && !(application.doorResults && application.doorResults.length)) {
+          inner = "<p>No detailed assessment responses were recorded for this LOCD.</p>";
+        } else {
+          const template = findTemplateById(application.templateId) || getTemplates()[0];
+          const resultsByDoor = {};
+          (application.doorResults || []).forEach(function (r) {
+            resultsByDoor[r.doorId] = r;
+          });
+
+          inner = "";
+          template.doors.forEach(function (door) {
+            const doorAnswers = (application.answers && application.answers[door.id]) || {};
+            const doorResult = resultsByDoor[door.id];
+
+            let rows = "";
+            door.questions.forEach(function (q) {
+              const a = doorAnswers[q.id];
+              const displayValue = a ? (a.label || a.value) : "&mdash;";
+              rows += "<tr><td>" + q.label + "</td><td>" + displayValue + "</td></tr>";
+            });
+
+            const resultBadge = doorResult
+              ? '<span class="status-badge ' + (doorResult.qualifies ? "status-badge--approved" : "status-badge--rejected") + '">' +
+                (doorResult.qualifies ? "Met" : "Not Met") + "</span>"
+              : "";
+
+            inner +=
+              '<div class="card" style="margin-bottom: 1rem">' +
+              '<div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem">' +
+              "<h3 style=\"margin-bottom: 0.25rem\">" + door.name + "</h3>" + resultBadge +
+              "</div>" +
+              (doorResult ? '<p class="text-muted">' + doorResult.detail + "</p>" : "") +
+              '<table class="data-table"><tbody>' + rows + "</tbody></table>" +
+              "</div>";
+          });
+        }
+
+        return "<h2>Assessment Responses</h2>" + inner;
+      }
+
+      function renderDocumentsSection(application) {
+        const documents = application.documents || [];
+        let inner;
+        if (documents.length === 0) {
+          inner = '<div class="card"><p>No documents on file.</p></div>';
+        } else {
+          let rows = "";
+          documents.forEach(function (doc) {
+            rows +=
+              "<tr><td>" + doc.name + "</td><td>" + doc.category + "</td><td>" + doc.sizeLabel +
+              "</td><td>" + formatDate(doc.uploadedDate) + "</td></tr>";
+          });
+          inner =
+            '<div class="card"><table class="data-table">' +
+            "<thead><tr><th>File</th><th>Category</th><th>Size</th><th>Uploaded</th></tr></thead>" +
+            "<tbody>" + rows + "</tbody></table></div>";
+        }
+        return "<h2 style=\"margin-top: 1.5rem\">Documents</h2>" + inner;
+      }
+
+      function renderAppealSection(application) {
+        const history = application.appealHistory || [];
+        if (history.length === 0) return "";
+        let rows = "";
+        history.forEach(function (h) {
+          rows += "<tr><td>" + formatDate(h.date) + "</td><td>" + h.action + "</td><td>" + h.note + "</td></tr>";
+        });
+        return (
+          "<h2 style=\"margin-top: 1.5rem\">Appeal History</h2>" +
+          '<div class="card"><table class="data-table">' +
+          "<thead><tr><th>Date</th><th>Action</th><th>Note</th></tr></thead>" +
+          "<tbody>" + rows + "</tbody></table></div>"
+        );
+      }
+    </script>
+  </body>
+</html>

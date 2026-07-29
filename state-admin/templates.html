@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assessment Templates — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.75rem">
+        <h1>Assessment Templates</h1>
+        <button type="button" class="btn btn-secondary" disabled title="Additional programs planned for a later phase">
+          + Add Template
+        </button>
+      </div>
+      <p class="text-muted">
+        Programs and their configured assessment templates. Edit a template to adjust its
+        sections ("Doors"), scoring strategy, and thresholds.
+      </p>
+
+      <div id="templates-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [
+        { label: "Registration Queue", href: "registration-queue.html", active: false },
+        { label: "All LOCDs", href: "all-locds.html", active: false },
+        { label: "Assessment Templates", href: "templates.html", active: true },
+      ];
+
+      const user = requireRole("State Admin", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function render() {
+        const container = document.getElementById("templates-content");
+        const templates = getTemplates();
+
+        if (templates.length === 0) {
+          container.innerHTML = '<div class="card"><p>No assessment templates configured yet.</p></div>';
+          return;
+        }
+
+        let cards = "";
+        templates.forEach(function (t) {
+          const badgeClass = t.status === "Published" ? "status-badge--approved" : "status-badge--draft";
+          cards +=
+            '<div class="card" style="margin-bottom: 1rem">' +
+            '<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap">' +
+            "<h2 style=\"margin-bottom: 0.25rem\">" + t.programName + "</h2>" +
+            '<span class="status-badge ' + badgeClass + '">' + t.status + "</span>" +
+            "</div>" +
+            '<p class="text-muted">' + t.description + "</p>" +
+            '<p class="text-muted">' + t.doors.length + " sections (\"Doors\") &middot; Last updated " + formatDate(t.lastUpdated) + "</p>" +
+            '<a class="btn btn-primary" href="template-editor.html?id=' + encodeURIComponent(t.id) + '">Edit Template</a>' +
+            "</div>";
+        });
+
+        container.innerHTML = cards;
+      }
+    </script>
+  </body>
+</html>

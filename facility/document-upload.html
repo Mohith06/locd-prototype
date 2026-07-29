@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Documents — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container" style="max-width: 720px">
+      <p><a href="dashboard.html">&larr; Back to My LOCDs</a></p>
+      <div id="documents-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/scoring.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [{ label: "My LOCDs", href: "dashboard.html", active: false }];
+      const appId = new URLSearchParams(window.location.search).get("id");
+      const CATEGORIES = ["Photo", "Physician Order / Prescription", "Other Supporting Document"];
+
+      const user = requireRole("Nursing Facility User", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        render();
+      }
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+
+      function render() {
+        const application = findApplicationById(appId);
+        const container = document.getElementById("documents-content");
+
+        if (!application || application.submittedByUserId !== user.id) {
+          container.innerHTML = '<div class="card"><p>LOCD not found.</p></div>';
+          return;
+        }
+
+        const documents = application.documents || [];
+
+        let rows = "";
+        documents.forEach(function (doc) {
+          rows +=
+            "<tr>" +
+            "<td>" + doc.name + "</td>" +
+            "<td>" + doc.category + "</td>" +
+            "<td>" + doc.sizeLabel + "</td>" +
+            "<td>" + formatDate(doc.uploadedDate) + "</td>" +
+            '<td><button type="button" class="btn btn-secondary" data-remove="' + doc.id + '">Remove</button></td>' +
+            "</tr>";
+        });
+
+        const tableHtml =
+          documents.length === 0
+            ? "<p>No documents attached yet.</p>"
+            : '<table class="data-table"><thead><tr><th>File</th><th>Category</th><th>Size</th><th>Uploaded</th><th></th></tr></thead><tbody>' +
+              rows +
+              "</tbody></table>";
+
+        container.innerHTML =
+          "<h1>Documents — " + application.patientName + "</h1>" +
+          '<div class="card" style="margin-bottom: 1.25rem">' + tableHtml + "</div>" +
+          '<div class="card">' +
+          "<h2>Add a Document</h2>" +
+          '<p class="field-hint">' +
+          "Prototype note: only the file name, type, and size are recorded here — actual file " +
+          "content is not persisted in this browser-only prototype." +
+          "</p>" +
+          '<div class="field-group">' +
+          '<label for="doc-file">File</label>' +
+          '<input type="file" id="doc-file" />' +
+          "</div>" +
+          '<div class="field-group">' +
+          '<label for="doc-category">Category</label>' +
+          '<select id="doc-category">' +
+          CATEGORIES.map((c) => "<option value=\"" + c + "\">" + c + "</option>").join("") +
+          "</select>" +
+          "</div>" +
+          '<button type="button" class="btn btn-primary" id="add-doc-btn">Add Document</button>' +
+          "</div>";
+
+        container.querySelectorAll("[data-remove]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            const docId = btn.getAttribute("data-remove");
+            const updatedDocs = (application.documents || []).filter((d) => d.id !== docId);
+            updateApplication(application.id, { documents: updatedDocs });
+            render();
+          });
+        });
+
+        document.getElementById("add-doc-btn").addEventListener("click", function () {
+          const fileInput = document.getElementById("doc-file");
+          const file = fileInput.files[0];
+          if (!file) {
+            alert("Choose a file first.");
+            return;
+          }
+          const category = document.getElementById("doc-category").value;
+          const newDoc = {
+            id: generateId("doc"),
+            name: file.name,
+            type: file.type || "unknown",
+            sizeLabel: formatSize(file.size),
+            uploadedDate: todayIso(),
+            category: category,
+          };
+          const updatedDocs = (application.documents || []).concat([newDoc]);
+          updateApplication(application.id, { documents: updatedDocs });
+          render();
+        });
+      }
+    </script>
+  </body>
+</html>

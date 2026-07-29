@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>All LOCDs — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container">
+      <h1>All LOCDs</h1>
+      <p class="text-muted">
+        Every LOCD application across all facilities and programs, for oversight purposes.
+      </p>
+
+      <div class="card" style="margin-bottom: 1.25rem">
+        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap">
+          <div class="field-group" style="flex: 1; min-width: 200px; margin-bottom: 0">
+            <label for="status-filter">Status</label>
+            <select id="status-filter"></select>
+          </div>
+          <div class="field-group" style="flex: 1; min-width: 200px; margin-bottom: 0">
+            <label for="facility-filter">Facility</label>
+            <select id="facility-filter"></select>
+          </div>
+        </div>
+      </div>
+
+      <div id="locds-content"></div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const NAV_LINKS = [
+        { label: "Registration Queue", href: "registration-queue.html", active: false },
+        { label: "All LOCDs", href: "all-locds.html", active: true },
+        { label: "Assessment Templates", href: "templates.html", active: false },
+      ];
+
+      const STATUS_BADGE_CLASS = {
+        Draft: "status-badge--draft",
+        Submitted: "status-badge--submitted",
+        Eligible: "status-badge--submitted",
+        Approved: "status-badge--approved",
+        Denied: "status-badge--rejected",
+        Appealed: "status-badge--pending",
+      };
+
+      const STATUSES = ["Draft", "Submitted", "Eligible", "Denied", "Appealed", "Approved"];
+
+      const user = requireRole("State Admin", "../auth/login.html");
+      if (user) {
+        renderNav({ loginPath: "../auth/login.html", links: NAV_LINKS });
+        setupFilters();
+        render();
+      }
+
+      function setupFilters() {
+        const statusSelect = document.getElementById("status-filter");
+        const facilitySelect = document.getElementById("facility-filter");
+
+        const allStatusOpt = document.createElement("option");
+        allStatusOpt.value = "";
+        allStatusOpt.textContent = "All Statuses";
+        statusSelect.appendChild(allStatusOpt);
+        STATUSES.forEach(function (s) {
+          const opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = s;
+          statusSelect.appendChild(opt);
+        });
+
+        const allFacilityOpt = document.createElement("option");
+        allFacilityOpt.value = "";
+        allFacilityOpt.textContent = "All Facilities";
+        facilitySelect.appendChild(allFacilityOpt);
+        MOCK_FACILITIES.forEach(function (f) {
+          const opt = document.createElement("option");
+          opt.value = f;
+          opt.textContent = f;
+          facilitySelect.appendChild(opt);
+        });
+
+        statusSelect.addEventListener("change", render);
+        facilitySelect.addEventListener("change", render);
+      }
+
+      function render() {
+        const statusFilter = document.getElementById("status-filter").value;
+        const facilityFilter = document.getElementById("facility-filter").value;
+        const container = document.getElementById("locds-content");
+
+        let applications = getApplications();
+        if (statusFilter) {
+          applications = applications.filter((a) => a.status === statusFilter);
+        }
+        if (facilityFilter) {
+          applications = applications.filter((a) => a.facility === facilityFilter);
+        }
+
+        if (applications.length === 0) {
+          container.innerHTML = '<div class="card"><p>No LOCDs match the selected filters.</p></div>';
+          return;
+        }
+
+        let rows = "";
+        applications.forEach(function (a) {
+          const badgeClass = STATUS_BADGE_CLASS[a.status] || "status-badge--draft";
+          rows +=
+            "<tr>" +
+            "<td>" + a.patientName + "</td>" +
+            "<td>" + a.facility + "</td>" +
+            "<td>" + a.program + "</td>" +
+            '<td><span class="status-badge ' + badgeClass + '">' + a.status + "</span></td>" +
+            "<td>" + (a.submittedDate ? formatDate(a.submittedDate) : "&mdash;") + "</td>" +
+            "<td>" + (a.decisionDate ? formatDate(a.decisionDate) : "&mdash;") + "</td>" +
+            "</tr>";
+        });
+
+        container.innerHTML =
+          '<div class="card">' +
+          '<table class="data-table">' +
+          "<thead><tr><th>Patient</th><th>Facility</th><th>Program</th><th>Status</th><th>Submitted</th><th>Decision</th></tr></thead>" +
+          "<tbody>" + rows + "</tbody>" +
+          "</table>" +
+          "</div>";
+      }
+    </script>
+  </body>
+</html>

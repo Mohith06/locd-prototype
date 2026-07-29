@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Register — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div class="page-container" style="max-width: 600px">
+      <div class="card">
+        <h1>Register for Access</h1>
+        <p class="text-muted">
+          For staff at a nursing facility, MI Choice, PACE, or MI Health Link provider. Your
+          registration will be reviewed by the state Medicaid agency before you can access the
+          LOCD application.
+        </p>
+
+        <div id="register-error" class="alert alert-error" style="display: none"></div>
+
+        <form id="register-form" novalidate>
+          <div class="field-group">
+            <label for="name">Full Name <span class="required-mark">*</span></label>
+            <input type="text" id="name" name="name" required />
+          </div>
+
+          <div class="field-group">
+            <label for="email">Email <span class="required-mark">*</span></label>
+            <input type="email" id="email" name="email" required autocomplete="username" />
+          </div>
+
+          <div class="field-group">
+            <label for="password">Password <span class="required-mark">*</span></label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              autocomplete="new-password"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="facility">Facility Affiliation <span class="required-mark">*</span></label>
+            <select id="facility" name="facility" required></select>
+          </div>
+
+          <div class="field-group">
+            <label for="phone">Contact Phone <span class="required-mark">*</span></label>
+            <input type="tel" id="phone" name="phone" required placeholder="555-123-4567" />
+          </div>
+
+          <div class="field-group">
+            <label for="title">Role / Title <span class="required-mark">*</span></label>
+            <input type="text" id="title" name="title" required placeholder="e.g. RN Assessor, Case Manager" />
+          </div>
+
+          <div class="field-group">
+            <label for="licenseNumber">License / Credential Number</label>
+            <input type="text" id="licenseNumber" name="licenseNumber" />
+            <p class="field-hint">
+              Placeholder field — exact required credential fields are still TBD with the state.
+            </p>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">Submit Registration</button>
+        </form>
+
+        <p class="form-footer-link">
+          Already have an account? <a href="login.html">Log in</a>
+        </p>
+      </div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script>
+      const facilitySelect = document.getElementById("facility");
+      const placeholderOpt = document.createElement("option");
+      placeholderOpt.value = "";
+      placeholderOpt.textContent = "Select a facility…";
+      placeholderOpt.disabled = true;
+      placeholderOpt.selected = true;
+      facilitySelect.appendChild(placeholderOpt);
+      MOCK_FACILITIES.forEach(function (name) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        facilitySelect.appendChild(opt);
+      });
+
+      const form = document.getElementById("register-form");
+      const errorBox = document.getElementById("register-error");
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+
+        const email = document.getElementById("email").value.trim();
+
+        if (findUserByEmail(email)) {
+          errorBox.textContent = "An account with this email already exists. Try logging in instead.";
+          errorBox.style.display = "block";
+          return;
+        }
+
+        errorBox.style.display = "none";
+
+        const newUser = {
+          id: generateId("u"),
+          email: email,
+          password: document.getElementById("password").value,
+          name: document.getElementById("name").value.trim(),
+          facility: document.getElementById("facility").value,
+          phone: document.getElementById("phone").value.trim(),
+          title: document.getElementById("title").value.trim(),
+          licenseNumber: document.getElementById("licenseNumber").value.trim(),
+          role: "Nursing Facility User",
+          registrationStatus: "pending",
+          submittedDate: todayIso(),
+        };
+
+        addUser(newUser);
+        setCurrentUser(newUser.id);
+        window.location.href = "registration-status.html";
+      });
+    </script>
+  </body>
+</html>

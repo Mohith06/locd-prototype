@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="page-container">
+      <div class="card" id="dashboard-content">
+        <!-- populated by script -->
+      </div>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/mock-data.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/nav.js"></script>
+    <script>
+      const user = getCurrentUser();
+
+      if (!user || user.registrationStatus !== "approved") {
+        window.location.href = "../auth/login.html";
+      } else {
+        renderNav({ loginPath: "../auth/login.html" });
+        document.getElementById("dashboard-content").innerHTML =
+          "<h1>Welcome, " + user.name + "</h1>" +
+          '<p class="text-muted">' + user.role + " &middot; " + user.facility + "</p>" +
+          "<p>You are logged in. The " + user.role + " dashboard for this role is not built " +
+          "yet — it's planned for a later batch of this prototype (see CLAUDE.md's " +
+          "&ldquo;Build Batches / Progress Log&rdquo;).</p>" +
+          "<p>This stub confirms the login and registration-approval flow works end to end.</p>";
+      }
+    </script>
+  </body>
+</html>

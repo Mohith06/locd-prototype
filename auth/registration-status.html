@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Registration Status — LOCD Assessment Platform</title>
+    <link rel="stylesheet" href="../shared/css/base.css" />
+    <link rel="stylesheet" href="../shared/css/components.css" />
+  </head>
+  <body>
+    <div id="app-nav-root"></div>
+
+    <div class="center-container">
+      <div class="card" id="status-card">
+        <!-- populated by script -->
+      </div>
+    </div>
+
+    <script src="../shared/js/utils.js"></script>
+    <script src="../shared/js/mock-data.js"></script>
+    <script src="../shared/js/state.js"></script>
+    <script src="../shared/js/nav.js"></script>
+    <script>
+      const user = getCurrentUser();
+
+      if (!user) {
+        window.location.href = "login.html";
+      } else {
+        renderNav({ loginPath: "login.html" });
+        render();
+      }
+
+      function render() {
+        const card = document.getElementById("status-card");
+        const current = getCurrentUser();
+
+        if (current.registrationStatus === "pending") {
+          card.innerHTML =
+            '<span class="status-badge status-badge--pending">Pending Review</span>' +
+            "<h1 style=\"margin-top: 0.75rem\">Registration Under Review</h1>" +
+            "<p>Your registration is currently under review by the state Medicaid agency. " +
+            "You'll be notified by email once a decision has been made, and you can check " +
+            "back here any time.</p>" +
+            '<p class="text-muted">Submitted: ' + formatDate(current.submittedDate) + "</p>";
+        } else if (current.registrationStatus === "rejected") {
+          card.innerHTML =
+            '<span class="status-badge status-badge--rejected">Rejected</span>' +
+            "<h1 style=\"margin-top: 0.75rem\">Registration Rejected</h1>" +
+            '<p><strong>Reason:</strong> ' +
+            (current.rejectionReason || "No reason provided.") +
+            "</p>" +
+            '<p class="text-muted">Submitted: ' + formatDate(current.submittedDate) + "</p>" +
+            '<button type="button" class="btn btn-primary" id="resubmit-btn">Resubmit Registration</button>';
+
+          document.getElementById("resubmit-btn").addEventListener("click", function () {
+            updateUser(current.id, {
+              registrationStatus: "pending",
+              submittedDate: todayIso(),
+              rejectionReason: undefined,
+            });
+            render();
+          });
+        } else if (current.registrationStatus === "approved") {
+          card.innerHTML =
+            '<span class="status-badge status-badge--approved">Approved</span>' +
+            "<h1 style=\"margin-top: 0.75rem\">You're Approved</h1>" +
+            "<p>Your registration has been approved. You now have full access to the LOCD " +
+            "application.</p>" +
+            '<a class="btn btn-primary" href="../shared/placeholder-dashboard.html">Continue to Dashboard</a>';
+        }
+      }
+    </script>
+  </body>
+</html>
