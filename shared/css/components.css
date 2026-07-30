@@ -277,6 +277,34 @@ table.data-table tbody tr:hover {
   font-weight: 700;
 }
 
+/* --- Binary (yes/no, or 2-option) toggle buttons — one click instead of a dropdown's two --- */
+.toggle-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toggle-btn:hover {
+  border-color: var(--color-primary);
+}
+
+.toggle-btn--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+}
+
 .stepper__step--done {
   background: var(--status-approved-bg);
   border-color: transparent;

@@ -61,10 +61,42 @@
         }
       }
 
+      // A yes/no field, or a single-select with only 2 options, is rendered as a one-click
+      // toggle button pair instead of a <select> — a dropdown costs 2 clicks (open, then pick)
+      // for a binary choice; a toggle costs 1.
+      function isBinaryQuestion(question) {
+        return (
+          question.fieldType === "yes-no" ||
+          (question.fieldType === "single-select" && question.options && question.options.length === 2)
+        );
+      }
+
+      function toggleOptionsFor(question) {
+        if (question.fieldType === "yes-no") {
+          return [
+            { label: "Yes", value: true },
+            { label: "No", value: false },
+          ];
+        }
+        return question.options;
+      }
+
       function optionInputHtml(question, currentAnswer) {
+        if (isBinaryQuestion(question)) {
+          const selectedLabel = currentAnswer ? currentAnswer.label : "";
+          let html = '<div class="toggle-group" data-qid="' + question.id + '" data-selected-label="' + selectedLabel + '">';
+          toggleOptionsFor(question).forEach(function (opt) {
+            const isActive = opt.label === selectedLabel;
+            html +=
+              '<button type="button" class="toggle-btn' + (isActive ? " toggle-btn--active" : "") + '" data-label="' +
+              opt.label + '">' + opt.label + "</button>";
+          });
+          html += "</div>";
+          return html;
+        }
         if (question.fieldType === "single-select") {
           const selectedLabel = currentAnswer ? currentAnswer.label : "";
-          let html = '<select data-qid="' + question.id + '" data-field-type="single-select">';
+          let html = '<select data-qid="' + question.id + '">';
           html += '<option value="">Select…</option>';
           question.options.forEach(function (opt) {
             html +=
@@ -74,21 +106,23 @@
           html += "</select>";
           return html;
         }
-        if (question.fieldType === "yes-no") {
-          const selectedValue = currentAnswer ? (currentAnswer.value ? "yes" : "no") : "";
-          return (
-            '<select data-qid="' + question.id + '" data-field-type="yes-no">' +
-            '<option value="">Select…</option>' +
-            '<option value="yes"' + (selectedValue === "yes" ? " selected" : "") + ">Yes</option>" +
-            '<option value="no"' + (selectedValue === "no" ? " selected" : "") + ">No</option>" +
-            "</select>"
-          );
-        }
         // numeric
         const numValue = currentAnswer && typeof currentAnswer.value === "number" ? currentAnswer.value : "";
-        return (
-          '<input type="number" min="0" data-qid="' + question.id + '" data-field-type="numeric" value="' + numValue + '" />'
-        );
+        return '<input type="number" min="0" data-qid="' + question.id + '" value="' + numValue + '" />';
+      }
+
+      function wireToggleGroups(container) {
+        container.querySelectorAll(".toggle-group").forEach(function (group) {
+          group.querySelectorAll(".toggle-btn").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              group.querySelectorAll(".toggle-btn").forEach(function (b) {
+                b.classList.remove("toggle-btn--active");
+              });
+              btn.classList.add("toggle-btn--active");
+              group.setAttribute("data-selected-label", btn.getAttribute("data-label"));
+            });
+          });
+        });
       }
 
       function renderStepper(application, template) {
@@ -130,6 +164,8 @@
           "</div>" +
           "</div>";
 
+        wireToggleGroups(container);
+
         if (!isFirst) {
           document.getElementById("prev-btn").addEventListener("click", function () {
             collectDoorAnswers(door);
@@ -164,6 +200,16 @@
       function collectDoorAnswers(door) {
         const doorAnswers = {};
         door.questions.forEach(function (q) {
+          if (isBinaryQuestion(q)) {
+            const group = document.querySelector('.toggle-group[data-qid="' + q.id + '"]');
+            const selectedLabel = group ? group.getAttribute("data-selected-label") : "";
+            if (!selectedLabel) return;
+            const option = toggleOptionsFor(q).find(function (o) {
+              return o.label === selectedLabel;
+            });
+            if (option) doorAnswers[q.id] = { fieldType: q.fieldType, value: option.value, label: option.label };
+            return;
+          }
           const el = document.querySelector('[data-qid="' + q.id + '"]');
           if (!el || el.value === "") return;
           if (q.fieldType === "single-select") {
@@ -171,9 +217,6 @@
               return o.label === el.value;
             });
             if (option) doorAnswers[q.id] = { fieldType: "single-select", value: option.value, label: option.label };
-          } else if (q.fieldType === "yes-no") {
-            const isYes = el.value === "yes";
-            doorAnswers[q.id] = { fieldType: "yes-no", value: isYes, label: isYes ? "Yes" : "No" };
           } else {
             doorAnswers[q.id] = { fieldType: "numeric", value: Number(el.value) || 0 };
           }
